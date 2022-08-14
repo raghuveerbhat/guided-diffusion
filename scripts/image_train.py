@@ -4,6 +4,8 @@ Train a diffusion model on images.
 
 import argparse
 
+import torch
+
 from guided_diffusion import dist_util, logger
 from guided_diffusion.image_datasets import load_data
 from guided_diffusion.resample import create_named_schedule_sampler
@@ -14,6 +16,7 @@ from guided_diffusion.script_util import (
     add_dict_to_argparser,
 )
 from guided_diffusion.train_util import TrainLoop
+from guided_diffusion.dnaloader import initialize_dataset
 
 
 def main():
@@ -30,12 +33,14 @@ def main():
     schedule_sampler = create_named_schedule_sampler(args.schedule_sampler, diffusion)
 
     logger.log("creating data loader...")
-    data = load_data(
-        data_dir=args.data_dir,
-        batch_size=args.batch_size,
-        image_size=args.image_size,
-        class_cond=args.class_cond,
-    )
+    
+    data = initialize_dataset(args.data_dir, args.batch_size)
+    # data = load_data(
+    #     data_dir=args.data_dir,
+    #     batch_size=args.batch_size,
+    #     image_size=args.image_size,
+    #     class_cond=args.class_cond,
+    # )
 
     logger.log("training...")
     TrainLoop(
