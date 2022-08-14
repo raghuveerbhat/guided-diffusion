@@ -7,13 +7,13 @@ import os.path
 import tifffile
 from PIL import Image
 
-# Initialize DNADataset and return data loader
-def initialize_dataset(root_dir="", src="/src/", target="/targ/", batch_size=2, shuffle_required=True):
+# Initialize DNADataset and return data loader iter
+def initialize_dataset(root_dir="", batch_size=2, src="/src/", target="/targ/", shuffle_required=True):
     ds = DNADataset(root_dir, src, target)
     loader = torch.utils.data.DataLoader(
         ds, batch_size=batch_size, shuffle=shuffle_required
     )
-    return loader
+    return iter(loader)
 
 
 class DNADataset(torch.utils.data.Dataset):
@@ -28,7 +28,7 @@ class DNADataset(torch.utils.data.Dataset):
                   seg is supposed to contain the segmentation
         '''
         super().__init__()
-        print("raghu: directory=",directory)
+        # print("raghu: directory=",directory,source_dr,target_dr)
         self.source_dir = directory+ source_dr
         self.target_dir = directory+ target_dr
         self.directory = os.path.expanduser(self.source_dir)
