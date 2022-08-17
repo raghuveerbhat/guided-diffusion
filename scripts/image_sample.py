@@ -5,6 +5,10 @@ numpy array. This can be used to produce samples for FID evaluation.
 
 import argparse
 import os
+import sys
+sys.path.append('../')
+sys.path.append('.')
+
 
 import numpy as np
 import torch as th
@@ -50,13 +54,13 @@ def main():
     
     logger.log("data loader...")
     data = initialize_dataset(args.data_dir, args.batch_size)
-
+    datal = iter(data)
     logger.log("sampling...")
     all_images = []
     all_labels = []
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
-        input_bf, flo = next(data)
+        input_bf, flo = next(datal)
         input_bf = input_bf.to(dist_util.dev())
         if args.class_cond:
             classes = th.randint(
@@ -112,8 +116,9 @@ def main():
 
 def create_argparser():
     defaults = dict(
+        data_dir="",
         clip_denoised=True,
-        num_samples=10000,
+        num_samples=32,
         batch_size=16,
         use_ddim=False,
         model_path="",

@@ -5,6 +5,9 @@ Train a diffusion model on images.
 import argparse
 
 import torch
+import sys
+sys.path.append('../')
+sys.path.append('.')
 
 from guided_diffusion import dist_util, logger
 from guided_diffusion.image_datasets import load_data
@@ -72,7 +75,7 @@ def create_argparser():
         batch_size=1,
         microbatch=-1,  # -1 disables microbatches
         ema_rate="0.9999",  # comma-separated list of EMA values
-        log_interval=10,
+        log_interval=50,
         save_interval=10000,
         resume_checkpoint="",
         use_fp16=False,
