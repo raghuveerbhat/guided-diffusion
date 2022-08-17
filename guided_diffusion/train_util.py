@@ -11,6 +11,8 @@ from torch.optim import AdamW
 from . import dist_util, logger
 from .fp16_util import MixedPrecisionTrainer
 from .nn import update_ema
+from .vgg import VGG
+from .advesarial import AdversarialLoss
 from .resample import LossAwareSampler, UniformSampler
 
 # For ImageNet experiments, this was a good default value.
@@ -71,6 +73,18 @@ class TrainLoop:
             use_fp16=self.use_fp16,
             fp16_scale_growth=fp16_scale_growth,
         )
+        use_vgg=True
+        if use_vgg:
+            self.vgg = VGG(conv_index='22').to(dist_util.dev())
+            print('use perc')
+        else:
+            self.vgg = None
+        use_gan = True
+        if use_gan:
+            self.adv = AdversarialLoss()
+            print('use adv')
+        else:
+            self.adv = None
 
         self.opt = AdamW(
             self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
@@ -196,13 +210,20 @@ class TrainLoop:
             }
             last_batch = (i + self.microbatch) >= batch.shape[0]
             t, weights = self.schedule_sampler.sample(micro.shape[0], dist_util.dev())
-
+            if self.step <100:
+                vgg_loss = None
+                adv_loss = None
+            else:
+                vgg_loss = self.vgg
+                adv_loss = self.adv
             compute_losses = functools.partial(
                 self.diffusion.training_losses,
                 self.ddp_model,
                 micro,
                 micro_bf,
                 t,
+                vgg_loss,
+                adv_loss,
                 model_kwargs=micro_cond,
             )
 

@@ -768,7 +768,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, input_bf, t, model_kwargs=None, noise=None):
+    def training_losses(self, model, x_start, input_bf, t, vgg, advesarial, model_kwargs=None, noise=None):
         """
         Compute training losses for a single timestep.
 
@@ -826,10 +826,19 @@ class GaussianDiffusion:
             }[self.model_mean_type]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
-            if "vb" in terms:
-                terms["loss"] = terms["mse"] + terms["vb"]
+            if vgg is not None:
+                terms["perceptual"] = vgg(self._predict_xstart_from_eps(x_t=x_t, t=t, eps=model_output).clamp(-1,1),x_start) * 0.004
             else:
-                terms["loss"] = terms["mse"]
+                terms["perceptual"] = 0
+            
+            if advesarial is not None:
+                terms["advesarial"] = advesarial(self._predict_xstart_from_eps(x_t=x_t, t=t, eps=model_output).clamp(-1,1),x_start) * 0.01
+            else:
+                terms["advesarial"] = 0
+            if "vb" in terms:
+                terms["loss"] = terms["mse"] + terms["vb"] + terms["perceptual"] + terms["advesarial"]
+            else:
+                terms["loss"] = terms["mse"] + terms["perceptual"] + terms["advesarial"]
         else:
             raise NotImplementedError(self.loss_type)
 
