@@ -151,11 +151,18 @@ class TrainLoop:
             self.opt.load_state_dict(state_dict)
 
     def run_loop(self):
+        data_iter = iter(self.data)
         while (
             not self.lr_anneal_steps
             or self.step + self.resume_step < self.lr_anneal_steps
         ):
-            bf, targ = next(self.data)
+            try:
+                bf, targ = next(data_iter)
+            except StopIteration:
+                # StopIteration is thrown if dataset ends
+                # reinitialize data loader
+                data_iter = iter(self.data)
+                bf, targ = next(data_iter)
             cond={}
             self.run_step(targ, bf, cond)
             if self.step % self.log_interval == 0:

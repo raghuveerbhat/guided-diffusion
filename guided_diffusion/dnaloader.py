@@ -6,6 +6,13 @@ import os.path
 # import nibabel
 import tifffile
 from PIL import Image
+import tifffile
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
+
+def normalize_negative_one(img):
+    normalized_input = (img - np.amin(img)) / (np.amax(img) - np.amin(img))
+    return 2.0*normalized_input - 1.0
 
 # Initialize DNADataset and return data loader iter
 def initialize_dataset(root_dir="", batch_size=2, src="/src/", target="/targ/", shuffle_required=True):
@@ -13,7 +20,7 @@ def initialize_dataset(root_dir="", batch_size=2, src="/src/", target="/targ/", 
     loader = torch.utils.data.DataLoader(
         ds, batch_size=batch_size, shuffle=shuffle_required
     )
-    return iter(loader)
+    return loader
 
 
 class DNADataset(torch.utils.data.Dataset):
@@ -29,15 +36,26 @@ class DNADataset(torch.utils.data.Dataset):
         '''
         super().__init__()
         # print("raghu: directory=",directory,source_dr,target_dr)
-        self.source_dir = directory+ source_dr
-        self.target_dir = directory+ target_dr
+        self.source_dir = directory + source_dr
+        self.target_dir = directory + target_dr
         self.directory = os.path.expanduser(self.source_dir)
 
+        self.normalization = False
+        self.ftype = "tiff"
         self.seqtypes = ['bf', 'flo']
 
         self.seqtypes_set = set(self.seqtypes)
         self.database = []
-        
+        self.transform_req = True
+        self.transform = A.Compose([
+            A.RandomCrop(width=128, height=128),
+            A.HorizontalFlip(p=0.5),
+            A.VerticalFlip(p=0.5),
+            A.ShiftScaleRotate(p=0.5),
+            A.RandomRotate90(),
+            ToTensorV2()
+        ],
+        additional_targets={'image0': 'image'})
         for root, dirs, files in os.walk(self.directory):
             # if there are no subdirs, we have data
             if not dirs:
@@ -61,20 +79,35 @@ class DNADataset(torch.utils.data.Dataset):
     def __getitem__(self, x):
         out = []
         filedict = self.database[x]
-        for seqtype in self.seqtypes:
-            im_frame = Image.open(filedict[seqtype])
-            # print("im_frame.shape(im_frame)=",im_frame.shape)
-            np_frame = np.array(im_frame)
-            np_frame = (np_frame.astype(np.float32)/127.5) - 1
-            # np_frame = tifffile.imread(filedict[seqtype])
-            # print("np_frame.shape(After)=",np_frame.shape)
-            path=filedict[seqtype]
-            out.append(torch.tensor(np_frame))
-        out = torch.stack(out)
-        bf = out[:-1, ...]
-        flo = out[-1, ...][None, ...]
-        flo = torch.where(flo > 0, 1, 0).float()
-        return (bf, flo)
+        if self.transform_req == False:
+          for seqtype in self.seqtypes:
+              if self.ftype == "tiff":
+                  np_frame = tifffile.imread(filedict[seqtype])
+                  if self.normalization:
+                      np_frame = normalize_negative_one(np_frame)
+                  path=filedict[seqtype]
+                  out.append(torch.tensor(np_frame))
+              else:
+                im_frame = Image.open(filedict[seqtype])
+                np_frame = np.array(im_frame)
+                np_frame = (np_frame.astype(np.float32)/127.5) - 1
+                path=filedict[seqtype]
+                out.append(torch.tensor(np_frame))
+          out = torch.stack(out)
+          bf = out[:-1, ...]
+          flo = out[-1, ...][None, ...]
+          if self.ftype == "tiff":
+            flo = torch.where(flo > 0, flo, flo).float()
+          else:
+            flo = torch.where(flo > 0, 1, -1).float()
+          return (bf, flo)
+        else:
+          sf = np.array(Image.open(filedict[self.seqtypes[0]]))
+          tf = np.array(Image.open(filedict[self.seqtypes[1]]))
+          transformed = self.transform(image=sf,image0=tf)
+          bf = transformed['image']/127.5 - 1.0
+          flo = transformed['image0']/127.5 - 1.0
+          return (bf, flo)
 
     def __len__(self):
         return len(self.database)
