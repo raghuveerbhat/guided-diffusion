@@ -82,7 +82,7 @@ def conv7x7(in_channels, out_channels, stride=1):
 class Discriminator(nn.Module):
     def __init__(self, ):
         super(Discriminator, self).__init__()
-        self.conv1 = conv7x7(3, 32)
+        self.conv1 = conv7x7(1, 32)
         self.norm1 = nn.InstanceNorm2d(32, affine=True)
         self.LReLU1 = nn.LeakyReLU(0.2)
 
@@ -168,7 +168,7 @@ def get_norm_layer(norm_type='instance'):
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc=3, ndf=64, n_layers=3 ):
+    def __init__(self, input_nc=1, ndf=64, n_layers=3 ):
         """Construct a PatchGAN discriminator
         Parameters:
             input_nc (int)  -- the number of channels in input images
