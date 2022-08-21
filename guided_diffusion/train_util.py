@@ -87,7 +87,7 @@ class TrainLoop:
         else:
             self.adv = None
         
-        self.use_mse = True
+        self.use_mse = False
 
         self.opt = AdamW(
             self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
@@ -174,14 +174,15 @@ class TrainLoop:
             or self.step + self.resume_step < self.lr_anneal_steps
         ):
             try:
-                bf, targ = next(data_iter)
+                bf, targ, cond = next(data_iter)
             except StopIteration:
                 # StopIteration is thrown if dataset ends
                 # reinitialize data loader
                 data_iter = iter(self.data)
-                bf, targ = next(data_iter)
+                bf, targ, conditioned = next(data_iter)
+                
             cond={}
-            self.run_step(targ, bf, cond)
+            self.run_step(targ, bf, conditioned, cond)
             if self.step % self.log_interval == 0:
                 logger.dumpkvs()
             if self.step % self.save_interval == 0:
@@ -194,19 +195,20 @@ class TrainLoop:
         if (self.step - 1) % self.save_interval != 0:
             self.save()
 
-    def run_step(self, batch, input_bf, cond):
-        self.forward_backward(batch, input_bf, cond)
+    def run_step(self, batch, input_bf, conditioned,  cond):
+        self.forward_backward(batch, input_bf, conditioned, cond)
         took_step = self.mp_trainer.optimize(self.opt)
         if took_step:
             self._update_ema()
         self._anneal_lr()
         self.log_step()
 
-    def forward_backward(self, batch, input_bf, cond):
+    def forward_backward(self, batch, input_bf, conditioned, cond):
         self.mp_trainer.zero_grad()
         for i in range(0, batch.shape[0], self.microbatch):
             micro = batch[i : i + self.microbatch].to(dist_util.dev())
             micro_bf = input_bf[i : i + self.microbatch].to(dist_util.dev())
+            micro_conditioned = conditioned[i : i + self.microbatch].to(dist_util.dev())
             micro_cond = {
                 k: v[i : i + self.microbatch].to(dist_util.dev())
                 for k, v in cond.items()
@@ -224,6 +226,7 @@ class TrainLoop:
                 self.ddp_model,
                 micro,
                 micro_bf,
+                micro_conditioned,
                 t,
                 vgg_loss,
                 adv_loss,
