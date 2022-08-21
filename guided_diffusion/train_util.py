@@ -73,18 +73,21 @@ class TrainLoop:
             use_fp16=self.use_fp16,
             fp16_scale_growth=fp16_scale_growth,
         )
-        use_vgg=True
-        if use_vgg:
+        self.use_vgg=False
+        if self.use_vgg:
             self.vgg = VGG(conv_index='22').to(dist_util.dev())
             print('use perc')
         else:
             self.vgg = None
-        use_gan = True
-        if use_gan:
+
+        self.use_gan = False
+        if self.use_gan:
             self.adv = AdversarialLoss()
             print('use adv')
         else:
             self.adv = None
+        
+        self.use_mse = True
 
         self.opt = AdamW(
             self.mp_trainer.master_params, lr=self.lr, weight_decay=self.weight_decay
@@ -224,6 +227,7 @@ class TrainLoop:
                 t,
                 vgg_loss,
                 adv_loss,
+                self.use_mse,
                 model_kwargs=micro_cond,
             )
 
