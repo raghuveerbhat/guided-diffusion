@@ -60,8 +60,12 @@ def main():
     all_labels = []
     while len(all_images) * args.batch_size < args.num_samples:
         model_kwargs = {}
-        input_bf, flo = next(datal)
+        input_bf, flo, conditional = next(datal)
         input_bf = input_bf.to(dist_util.dev())
+        conditional = conditional.to(dist_util.dev())
+        viz.image(visualize(input_bf.cpu()[0, 0,...]), opts=dict(caption="BrightField"))
+        viz.image(visualize(conditional.cpu()[0, 0,...]), opts=dict(caption="conditional"))
+        viz.image(visualize(flo.cpu()[0, 0,...]), opts=dict(caption="Target"))
         if args.class_cond:
             classes = th.randint(
                 low=0, high=NUM_CLASSES, size=(args.batch_size,), device=dist_util.dev()
@@ -74,11 +78,10 @@ def main():
             model,
             (args.batch_size, 1, args.image_size, args.image_size),
             input_bf,
+            conditional,
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
         )
-        viz.image(visualize(input_bf.cpu()[0, 0,...]), opts=dict(caption="BrightField"))
-        viz.image(visualize(flo.cpu()[0, 0,...]), opts=dict(caption="Target"))
         viz.image(visualize(sample.cpu()[0, 0,...]), opts=dict(caption="Prediction"))
 
         sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
