@@ -5,7 +5,7 @@ import os
 import os.path
 # import nibabel
 import tifffile
-from PIL import Image
+from PIL import Image,ImageOps
 import tifffile
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -24,7 +24,7 @@ def initialize_dataset(root_dir="", batch_size=2, src="/src/", target="/targ/", 
 
 
 class DNADataset(torch.utils.data.Dataset):
-    def __init__(self, directory, source_dr="/src/", target_dr="/targ/"):
+    def __init__(self, directory, source_dr="/src/", target_dr="/targ/", conditional_dr="/cond/"):
         '''
         directory is expected to contain some folder structure:
                   if some subfolder contains only files, all of these
@@ -36,26 +36,29 @@ class DNADataset(torch.utils.data.Dataset):
         '''
         super().__init__()
         # print("raghu: directory=",directory,source_dr,target_dr)
+        pix2pix_dr = "pix2pix_v3_new4P/test_latest/images/"
         self.source_dir = directory + source_dr
         self.target_dir = directory + target_dr
+        self.condtional = directory + conditional_dr + pix2pix_dr
         self.directory = os.path.expanduser(self.source_dir)
 
         self.normalization = False
-        self.ftype = "tiff"
-        self.seqtypes = ['bf', 'flo']
+        self.ftype = "png"
+        self.transform_req = True
+        
+        self.seqtypes = ['bf', 'flo', 'cond']
 
         self.seqtypes_set = set(self.seqtypes)
         self.database = []
-        self.transform_req = True
         self.transform = A.Compose([
             A.RandomCrop(width=128, height=128),
-            A.HorizontalFlip(p=0.5),
-            A.VerticalFlip(p=0.5),
-            A.ShiftScaleRotate(p=0.5),
-            A.RandomRotate90(),
+            # A.HorizontalFlip(p=0.5),
+            # A.VerticalFlip(p=0.5),
+            # A.ShiftScaleRotate(p=0.5),
+            # A.RandomRotate90(),
             ToTensorV2()
         ],
-        additional_targets={'image0': 'image'})
+        additional_targets={'image0': 'image', 'image1': 'image'})
         for root, dirs, files in os.walk(self.directory):
             # if there are no subdirs, we have data
             if not dirs:
@@ -70,6 +73,10 @@ class DNADataset(torch.utils.data.Dataset):
                         if i == 'flo':
                             datapoint[i] = os.path.join(self.target_dir, f)
                             # print("flo=",os.path.join(directory, self.target_dir, f))
+                        if i == 'cond':
+                            q = f[:-4]
+                            q += "_fake_B.png"
+                            datapoint[i] = os.path.join(self.condtional, q)
                     assert set(datapoint.keys()) == self.seqtypes_set, \
                         f'datapoint is incomplete, keys are {datapoint.keys()}'
                     self.database.append(datapoint)
@@ -94,20 +101,23 @@ class DNADataset(torch.utils.data.Dataset):
                 path=filedict[seqtype]
                 out.append(torch.tensor(np_frame))
           out = torch.stack(out)
-          bf = out[:-1, ...]
-          flo = out[-1, ...][None, ...]
-          if self.ftype == "tiff":
-            flo = torch.where(flo > 0, flo, flo).float()
-          else:
-            flo = torch.where(flo > 0, 1, -1).float()
-          return (bf, flo)
+          bf = out[:-2, ...]
+          flo = out[-2, ...]
+          cond = out[-1, ...][None, ...]
+          flo = torch.where(flo > 0, flo, flo).float()
+          cond = torch.where(cond > 0, cond, cond).float()
+          return (bf, flo, cond)
         else:
           sf = np.array(Image.open(filedict[self.seqtypes[0]]))
           tf = np.array(Image.open(filedict[self.seqtypes[1]]))
-          transformed = self.transform(image=sf,image0=tf)
+          color = Image.open(filedict[self.seqtypes[2]])
+          gray = ImageOps.grayscale(color)
+          conditioned = np.array(gray)
+          transformed = self.transform(image=sf,image0=tf, image1=conditioned)
           bf = transformed['image']/127.5 - 1.0
           flo = transformed['image0']/127.5 - 1.0
-          return (bf, flo)
+          cond = transformed['image1']/127.5 - 1.0
+          return (bf, flo, cond)
 
     def __len__(self):
         return len(self.database)
