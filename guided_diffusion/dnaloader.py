@@ -36,7 +36,7 @@ class DNADataset(torch.utils.data.Dataset):
         '''
         super().__init__()
         # print("raghu: directory=",directory,source_dr,target_dr)
-        pix2pix_dr = "pix2pix_v3_new4P/test_latest/images/"
+        pix2pix_dr = "pix2pix_v3_new4P/test_latest/images_gray/"
         self.source_dir = directory + source_dr
         self.target_dir = directory + target_dr
         self.condtional = directory + conditional_dr + pix2pix_dr
