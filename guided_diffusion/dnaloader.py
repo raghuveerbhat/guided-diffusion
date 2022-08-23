@@ -110,9 +110,7 @@ class DNADataset(torch.utils.data.Dataset):
         else:
           sf = np.array(Image.open(filedict[self.seqtypes[0]]))
           tf = np.array(Image.open(filedict[self.seqtypes[1]]))
-          color = Image.open(filedict[self.seqtypes[2]])
-          gray = ImageOps.grayscale(color)
-          conditioned = np.array(gray)
+          conditioned = np.array(Image.open(filedict[self.seqtypes[2]]))
           transformed = self.transform(image=sf,image0=tf, image1=conditioned)
           bf = transformed['image']/127.5 - 1.0
           flo = transformed['image0']/127.5 - 1.0
