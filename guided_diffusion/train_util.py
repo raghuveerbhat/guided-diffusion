@@ -12,7 +12,7 @@ from . import dist_util, logger
 from .fp16_util import MixedPrecisionTrainer
 from .nn import update_ema
 from .vgg import VGG
-from .advesarial import AdversarialLoss
+from .advesarial import *
 from .resample import LossAwareSampler, UniformSampler
 
 # For ImageNet experiments, this was a good default value.
@@ -82,7 +82,9 @@ class TrainLoop:
 
         self.use_gan = False
         if self.use_gan:
-            self.adv = AdversarialLoss()
+            self.adv = define_D(2, 64, 'basic',
+                                          3, 'batch', 'normal', 0.02, [])
+            self.criterionGAN = GANLoss('vanilla').to(dist_util.dev())
             print('use adv')
         else:
             self.adv = None
