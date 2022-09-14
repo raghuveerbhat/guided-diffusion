@@ -85,8 +85,10 @@ class TrainLoop:
             self.adv = define_D(2, 64, 'basic',
                                           3, 'batch', 'normal', 0.02, [])
             self.criterionGAN = GANLoss('vanilla').to(dist_util.dev())
+            self.optimizer_D = torch.optim.Adam(self.adv.parameters(), lr=self.lr, betas=(0.5, 0.999))
             print('use adv')
         else:
+            self.criterionGAN = None
             self.adv = None
         
         self.use_mse = True
@@ -218,9 +220,13 @@ class TrainLoop:
             if self.step <100:
                 vgg_loss = None
                 adv_loss = None
+                criterionGAN_loss = None
+                optimizer_D = None
             else:
                 vgg_loss = self.vgg
                 adv_loss = self.adv
+                criterionGAN_loss = self.criterionGAN
+                optimizer_D = self.optimizer_D
             compute_losses = functools.partial(
                 self.diffusion.training_losses,
                 self.ddp_model,
@@ -229,6 +235,8 @@ class TrainLoop:
                 t,
                 vgg_loss,
                 adv_loss,
+                criterionGAN_loss,
+                optimizer_D,
                 self.use_mse,
                 model_kwargs=micro_cond,
             )
