@@ -7,145 +7,9 @@ from .nn import mean_flat
 from . import dist_util
 import functools
 
-class AdversarialLoss(nn.Module):
-    def __init__(self,  gan_type='WGAN_GP', gan_k=1, 
-        lr_dis=1e-5 ):
-
-        super(AdversarialLoss, self).__init__()
-       
-        self.gan_type = gan_type
-        self.gan_k = gan_k
- 
-        model = NLayerDiscriminator().to(dist_util.dev()) 
-        self.discriminator =  DDP(
-                model,
-                device_ids=[dist_util.dev()],
-                output_device=dist_util.dev(),
-                broadcast_buffers=False,
-                bucket_cap_mb=128,
-                find_unused_parameters=False,
-            )
- 
-        if (gan_type in ['WGAN_GP', 'GAN']):
-            self.optimizer = optim.Adam(
-                self.discriminator.parameters(),
-                 lr=lr_dis
-            )
-   
-    def forward(self, fake, real):
-        fake_detach = fake.detach()
-        for _ in range(self.gan_k):
-            self.optimizer.zero_grad()
-            d_fake = self.discriminator(fake_detach)
-            d_real = self.discriminator(real)
-            if (self.gan_type.find('WGAN') >= 0):
-                loss_d = (d_fake - d_real).mean()
-                if self.gan_type.find('GP') >= 0:
-                    epsilon = torch.rand(real.size(0), 1, 1, 1).to(dist_util.dev())
-                    epsilon = epsilon.expand(real.size())
-                    hat = fake_detach.mul(1 - epsilon) + real.mul(epsilon)
-                    hat.requires_grad = True
-                    d_hat = self.discriminator(hat)
-                    gradients = torch.autograd.grad(
-                        outputs=d_hat.sum(), inputs=hat,
-                        retain_graph=True, create_graph=True, only_inputs=True
-                    )[0]
-                    gradients = gradients.view(gradients.size(0), -1)
-                    gradient_norm = gradients.norm(2, dim=1)
-                    gradient_penalty = 10 * gradient_norm.sub(1).pow(2).mean()
-                    loss_d += gradient_penalty
- 
-            # print('d loss:', loss_d)
-            # Discriminator update
-            loss_d.backward()
-            self.optimizer.step()
-
-        d_fake_for_g = self.discriminator(fake)
-        if (self.gan_type.find('WGAN') >= 0):
-            loss_g = -d_fake_for_g 
-    
-        # Generator loss
-        return  mean_flat(loss_g)
-
-
-
-def conv3x3(in_channels, out_channels, stride=1):
-    return nn.Conv2d(in_channels, out_channels, kernel_size=3, 
-                     stride=stride, padding=1, bias=True)
-
-
-def conv7x7(in_channels, out_channels, stride=1):
-    return nn.Conv2d(in_channels, out_channels, kernel_size=7, 
-                     stride=stride, padding=3, bias=True)
-
-
-class Discriminator(nn.Module):
-    def __init__(self, ):
-        super(Discriminator, self).__init__()
-        self.conv1 = conv7x7(1, 32)
-        self.norm1 = nn.InstanceNorm2d(32, affine=True)
-        self.LReLU1 = nn.LeakyReLU(0.2)
-
-        self.conv2 = conv3x3(32, 32, 2)
-        self.norm2 = nn.InstanceNorm2d(32, affine=True)
-        self.LReLU2 = nn.LeakyReLU(0.2)
-
-        self.conv3 = conv3x3(32, 64)
-        self.norm3 = nn.InstanceNorm2d(64, affine=True)
-        self.LReLU3 = nn.LeakyReLU(0.2)
-
-        self.conv4 = conv3x3(64, 64, 2)
-        self.norm4 = nn.InstanceNorm2d(64, affine=True)
-        self.LReLU4 = nn.LeakyReLU(0.2)
-
-        self.conv5 = conv3x3(64, 128)
-        self.norm5 = nn.InstanceNorm2d(128, affine=True)
-        self.LReLU5 = nn.LeakyReLU(0.2)
-
-        self.conv6 = conv3x3(128, 128, 2)
-        self.norm6 = nn.InstanceNorm2d(128, affine=True)
-        self.LReLU6 = nn.LeakyReLU(0.2)
-
-        self.conv7 = conv3x3(128, 256)
-        self.norm7 = nn.InstanceNorm2d(256, affine=True)
-        self.LReLU7 = nn.LeakyReLU(0.2)
-
-        self.conv8 = conv3x3(256, 256, 2)
-        self.norm8 = nn.InstanceNorm2d(256, affine=True)
-        self.LReLU8 = nn.LeakyReLU(0.2)
-
-        self.conv9 = conv3x3(256, 512)
-        self.norm9 = nn.InstanceNorm2d(512, affine=True)
-        self.LReLU9 = nn.LeakyReLU(0.2)
-
-        self.conv10 = conv3x3(512, 512, 2)
-        self.norm10 = nn.InstanceNorm2d(512, affine=True)
-        self.LReLU10 = nn.LeakyReLU(0.2)
-
-        self.conv11 = conv3x3(512, 32)
-        self.norm11 = nn.InstanceNorm2d(32, affine=True)
-        self.LReLU11 = nn.LeakyReLU(0.2)
-        self.conv12 = conv3x3(32, 1)
- 
-        
+class Identity(nn.Module):
     def forward(self, x):
-        x = self.LReLU1(self.norm1(self.conv1(x)))
-        x = self.LReLU2(self.norm2(self.conv2(x)))
-        x = self.LReLU3(self.norm3(self.conv3(x)))
-        x = self.LReLU4(self.norm4(self.conv4(x)))
-        x = self.LReLU5(self.norm5(self.conv5(x)))
-        x = self.LReLU6(self.norm6(self.conv6(x)))
-        x = self.LReLU7(self.norm7(self.conv7(x)))
-        x = self.LReLU8(self.norm8(self.conv8(x)))
-        x = self.LReLU9(self.norm9(self.conv9(x)))
-        x = self.LReLU10(self.norm10(self.conv10(x)))
-        
-        x = self.LReLU11(self.norm11(self.conv11(x)))
-        x = self.conv12(x)
- 
-        return x        
-
-
+        return x
 
 def get_norm_layer(norm_type='instance'):
     """Return a normalization layer
@@ -159,16 +23,16 @@ def get_norm_layer(norm_type='instance'):
     elif norm_type == 'instance':
         norm_layer = functools.partial(nn.InstanceNorm2d, affine=False, track_running_stats=False)
     elif norm_type == 'none':
-        def norm_layer(x): return Identity()
+        def norm_layer(x):
+            return Identity()
     else:
         raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
     return norm_layer
 
-
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc=1, ndf=64, n_layers=3 ):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
         """Construct a PatchGAN discriminator
         Parameters:
             input_nc (int)  -- the number of channels in input images
@@ -177,7 +41,6 @@ class NLayerDiscriminator(nn.Module):
             norm_layer      -- normalization layer
         """
         super(NLayerDiscriminator, self).__init__()
-        norm_layer = get_norm_layer(norm_type='instance')
         if type(norm_layer) == functools.partial:  # no need to use bias as BatchNorm2d has affine parameters
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
@@ -211,3 +74,68 @@ class NLayerDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.model(input)
+
+
+##############################################################################
+# Classes
+##############################################################################
+class GANLoss(nn.Module):
+    """Define different GAN objectives.
+    The GANLoss class abstracts away the need to create the target label tensor
+    that has the same size as the input.
+    """
+
+    def __init__(self, gan_mode, target_real_label=1.0, target_fake_label=0.0):
+        """ Initialize the GANLoss class.
+        Parameters:
+            gan_mode (str) - - the type of GAN objective. It currently supports vanilla, lsgan, and wgangp.
+            target_real_label (bool) - - label for a real image
+            target_fake_label (bool) - - label of a fake image
+        Note: Do not use sigmoid as the last layer of Discriminator.
+        LSGAN needs no sigmoid. vanilla GANs will handle it with BCEWithLogitsLoss.
+        """
+        super(GANLoss, self).__init__()
+        self.register_buffer('real_label', torch.tensor(target_real_label))
+        self.register_buffer('fake_label', torch.tensor(target_fake_label))
+        self.gan_mode = gan_mode
+        if gan_mode == 'lsgan':
+            self.loss = nn.MSELoss()
+        elif gan_mode == 'vanilla':
+            self.loss = nn.BCEWithLogitsLoss()
+        elif gan_mode in ['wgangp']:
+            self.loss = None
+        else:
+            raise NotImplementedError('gan mode %s not implemented' % gan_mode)
+
+    def get_target_tensor(self, prediction, target_is_real):
+        """Create label tensors with the same size as the input.
+        Parameters:
+            prediction (tensor) - - tpyically the prediction from a discriminator
+            target_is_real (bool) - - if the ground truth label is for real images or fake images
+        Returns:
+            A label tensor filled with ground truth label, and with the size of the input
+        """
+
+        if target_is_real:
+            target_tensor = self.real_label
+        else:
+            target_tensor = self.fake_label
+        return target_tensor.expand_as(prediction)
+
+    def __call__(self, prediction, target_is_real):
+        """Calculate loss given Discriminator's output and grount truth labels.
+        Parameters:
+            prediction (tensor) - - tpyically the prediction output from a discriminator
+            target_is_real (bool) - - if the ground truth label is for real images or fake images
+        Returns:
+            the calculated loss.
+        """
+        if self.gan_mode in ['lsgan', 'vanilla']:
+            target_tensor = self.get_target_tensor(prediction, target_is_real)
+            loss = self.loss(prediction, target_tensor)
+        elif self.gan_mode == 'wgangp':
+            if target_is_real:
+                loss = -prediction.mean()
+            else:
+                loss = prediction.mean()
+        return loss
